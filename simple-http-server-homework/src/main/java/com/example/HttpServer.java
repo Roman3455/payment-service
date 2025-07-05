@@ -7,7 +7,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -32,6 +31,7 @@ public class HttpServer {
                     String[] request = in.readLine().split(" ");
                     if (request.length > 1) {
                         out.write(getServerResponse(request[1]));
+                        System.out.println(getServerResponse(request[1]));
                         out.flush();
                     }
                 }
@@ -42,23 +42,13 @@ public class HttpServer {
     private static String getServerResponse(String request) throws IOException {
         Path basePath = Paths.get(SOURCE_DIR).toAbsolutePath().normalize();
         Path requestedPath = basePath.resolve(request.substring(1)).normalize();
-        if (!requestedPath.startsWith(basePath) || !Files.exists(requestedPath)) {
-            requestedPath = NOT_FOUND;
-        }
-
-        String statusCode = requestedPath.equals(NOT_FOUND) ? "404 Not Found" : "200 OK";
-        String fileEntity = String.join(
-                System.lineSeparator(),
-                Files.readAllLines(requestedPath, StandardCharsets.UTF_8)
-        );
-        byte[] fileBytes = fileEntity.getBytes(StandardCharsets.UTF_8);
-        long fileLength = fileBytes.length;
-
+        boolean isFileFound = requestedPath.startsWith(basePath) && Files.exists(requestedPath);
+        Path fileToRead =  isFileFound ? requestedPath : NOT_FOUND;
+        String statusCode = isFileFound ? "200 OK" : "404 Not Found";
         String extension = getExtension(requestedPath.getFileName().toString());
         Optional<String> contentType = CONTENT_TYPES.stream()
-                .filter(c -> c.contains(extension))
+                .filter(c -> c.endsWith(extension))
                 .findFirst();
-
         return String.format("""
                         HTTP/1.1 %s\r
                         Content-Type: %s; charset=UTF-8\r
@@ -67,9 +57,10 @@ public class HttpServer {
                         %s
                         """,
                 statusCode,
-                contentType.orElse("text/plain"),
-                fileLength,
-                fileEntity);
+                contentType.orElse("text/html"),
+                Files.readAllBytes(fileToRead).length,
+                Files.readString(fileToRead)
+        );
     }
 
     private static String getExtension(String filename) {
